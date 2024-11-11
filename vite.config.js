@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  base: '/ToDoList/', // Adjust to match your repository name
+  base: '/ToDoList/',
   // other Vite config options
 });

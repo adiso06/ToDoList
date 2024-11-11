@@ -6,9 +6,12 @@ import type { TodoList, TodoItem } from '../types';
 
 interface TodoStore {
   lists: TodoList[];
+  collapsedLists: Set<string>;
+  collapsedSublists: Map<string, Set<string>>;
   setLists: (lists: TodoList[]) => void;
   toggleItem: (listId: string, itemId: string, sublist?: string) => void;
   deleteItem: (listId: string, itemId: string, sublist?: string) => void;
+  editItem: (listId: string, itemId: string, newText: string, sublist?: string) => void;
   addItem: (listId: string, text: string, sublist?: string) => void;
   resetList: (listId: string) => void;
   createList: (name: string) => void;
@@ -17,11 +20,25 @@ interface TodoStore {
   saveAsDefault: (listId: string) => void;
   darkMode: boolean;
   toggleDarkMode: () => void;
+  toggleListCollapse: (listId: string) => void;
+  toggleSublistCollapse: (listId: string, sublist: string) => void;
+  reorderLists: (newLists: TodoList[]) => void;
+  reorderSublist: (listId: string, sublist: string, newItems: TodoItem[]) => void;
 }
+
+const getInitialTheme = () => {
+  const savedTheme = localStorage.getItem('darkMode');
+  if (savedTheme !== null) {
+    return savedTheme === 'true';
+  }
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
+};
 
 export const useTodoStore = create<TodoStore>((set, get) => ({
   lists: [],
-  darkMode: localStorage.getItem('darkMode') === 'true',
+  collapsedLists: new Set(),
+  collapsedSublists: new Map(),
+  darkMode: getInitialTheme(),
   
   setLists: (lists) => set({ lists }),
   
@@ -43,6 +60,37 @@ export const useTodoStore = create<TodoStore>((set, get) => ({
       const itemIndex = list.items.findIndex(i => i.id === itemId);
       if (itemIndex !== -1) {
         list.items[itemIndex].completed = !list.items[itemIndex].completed;
+        updated = true;
+      }
+    }
+    
+    if (updated) {
+      await updateDoc(doc(db, 'lists', listId), {
+        items: list.items,
+        sublists: list.sublists
+      });
+      set({ lists });
+    }
+  },
+
+  editItem: async (listId, itemId, newText, sublist) => {
+    const lists = [...get().lists];
+    const listIndex = lists.findIndex(l => l.id === listId);
+    if (listIndex === -1) return;
+    
+    const list = lists[listIndex];
+    let updated = false;
+    
+    if (sublist && list.sublists?.[sublist]) {
+      const itemIndex = list.sublists[sublist].findIndex(i => i.id === itemId);
+      if (itemIndex !== -1) {
+        list.sublists[sublist][itemIndex].text = newText;
+        updated = true;
+      }
+    } else if (list.items) {
+      const itemIndex = list.items.findIndex(i => i.id === itemId);
+      if (itemIndex !== -1) {
+        list.items[itemIndex].text = newText;
         updated = true;
       }
     }
@@ -204,5 +252,52 @@ export const useTodoStore = create<TodoStore>((set, get) => ({
     const newDarkMode = !get().darkMode;
     localStorage.setItem('darkMode', String(newDarkMode));
     set({ darkMode: newDarkMode });
+  },
+
+  toggleListCollapse: (listId) => {
+    const collapsedLists = new Set(get().collapsedLists);
+    if (collapsedLists.has(listId)) {
+      collapsedLists.delete(listId);
+    } else {
+      collapsedLists.add(listId);
+    }
+    set({ collapsedLists });
+  },
+
+  toggleSublistCollapse: (listId, sublist) => {
+    const collapsedSublists = new Map(get().collapsedSublists);
+    if (!collapsedSublists.has(listId)) {
+      collapsedSublists.set(listId, new Set());
+    }
+    const listSublists = collapsedSublists.get(listId)!;
+    if (listSublists.has(sublist)) {
+      listSublists.delete(sublist);
+    } else {
+      listSublists.add(sublist);
+    }
+    set({ collapsedSublists });
+  },
+
+  reorderLists: (newLists) => {
+    set({ lists: newLists });
+  },
+
+  reorderSublist: async (listId, sublist, newItems) => {
+    const lists = [...get().lists];
+    const listIndex = lists.findIndex(l => l.id === listId);
+    if (listIndex === -1) return;
+
+    const list = lists[listIndex];
+    if (sublist && list.sublists) {
+      list.sublists[sublist] = newItems;
+    } else {
+      list.items = newItems;
+    }
+
+    await updateDoc(doc(db, 'lists', listId), {
+      items: list.items,
+      sublists: list.sublists
+    });
+    set({ lists });
   }
 }));

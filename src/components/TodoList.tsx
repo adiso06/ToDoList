@@ -1,8 +1,22 @@
 import React, { useState } from 'react';
 import { Plus, RotateCcw, Save, Trash2, ListPlus, ChevronDown } from 'lucide-react';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy
+} from '@dnd-kit/sortable';
 import type { TodoList as TodoListType } from '../types';
 import { useTodoStore } from '../store/todoStore';
-import { TodoItem } from './TodoItem';
+import { DraggableTodoItem } from './DraggableTodoItem';
 import { TodoSublist } from './TodoSublist';
 
 interface Props {
@@ -13,22 +27,27 @@ interface Props {
 }
 
 export function TodoList({ list, onToggle, onAdd, onReset }: Props) {
-  const { createSublist, saveAsDefault, deleteList, deleteItem } = useTodoStore();
+  const {
+    createSublist,
+    saveAsDefault,
+    deleteList,
+    deleteItem,
+    editItem,
+    toggleListCollapse,
+    collapsedLists,
+    reorderSublist
+  } = useTodoStore();
+  
   const [newItemText, setNewItemText] = useState('');
   const [newSublistName, setNewSublistName] = useState('');
   const [showSublistInput, setShowSublistInput] = useState(false);
-  const [expandedSublists, setExpandedSublists] = useState<Set<string>>(new Set());
-  const [isCollapsed, setIsCollapsed] = useState(false);
 
-  const toggleSublist = (sublist: string) => {
-    const newExpanded = new Set(expandedSublists);
-    if (newExpanded.has(sublist)) {
-      newExpanded.delete(sublist);
-    } else {
-      newExpanded.add(sublist);
-    }
-    setExpandedSublists(newExpanded);
-  };
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,17 +66,26 @@ export function TodoList({ list, onToggle, onAdd, onReset }: Props) {
     }
   };
 
-  const handleHeaderClick = (e: React.MouseEvent) => {
-    // Prevent collapse when clicking buttons
-    if ((e.target as HTMLElement).closest('button')) return;
-    setIsCollapsed(!isCollapsed);
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    
+    if (over && active.id !== over.id) {
+      const items = [...list.items];
+      const oldIndex = items.findIndex(item => item.id === active.id);
+      const newIndex = items.findIndex(item => item.id === over.id);
+      
+      const newItems = arrayMove(items, oldIndex, newIndex);
+      reorderSublist(list.id, '', newItems);
+    }
   };
+
+  const isCollapsed = collapsedLists.has(list.id);
 
   return (
     <div className="w-full bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden border border-gray-100 dark:border-gray-700">
       <div 
         className="p-6 bg-gradient-to-r from-blue-600 to-blue-700 cursor-pointer select-none"
-        onClick={handleHeaderClick}
+        onClick={() => toggleListCollapse(list.id)}
       >
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2">
@@ -150,31 +178,41 @@ export function TodoList({ list, onToggle, onAdd, onReset }: Props) {
               </form>
             )}
 
-            <div className="space-y-4">
-              {list.items?.map(item => (
-                <TodoItem
-                  key={`${list.id}-item-${item.id}`}
-                  id={item.id}
-                  text={item.text}
-                  completed={item.completed}
-                  onToggle={(itemId) => onToggle(itemId)}
-                  onDelete={(itemId) => deleteItem(list.id, itemId)}
-                />
-              ))}
-            </div>
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={list.items?.map(item => item.id) || []}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="space-y-4">
+                  {list.items?.map(item => (
+                    <DraggableTodoItem
+                      key={item.id}
+                      {...item}
+                      onToggle={(itemId) => onToggle(itemId)}
+                      onDelete={(itemId) => deleteItem(list.id, itemId)}
+                      onEdit={(itemId, newText) => editItem(list.id, itemId, newText)}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
 
             {list.sublists && Object.entries(list.sublists).length > 0 && (
               <div className="space-y-4">
                 {Object.entries(list.sublists).map(([sublist, items]) => (
                   <TodoSublist
                     key={`${list.id}-sublist-${sublist}`}
+                    listId={list.id}
                     name={sublist}
                     items={items}
-                    isExpanded={expandedSublists.has(sublist)}
                     onToggle={(itemId) => onToggle(itemId, sublist)}
                     onAdd={(text) => onAdd(text, sublist)}
                     onDelete={(itemId) => deleteItem(list.id, itemId, sublist)}
-                    onToggleExpand={() => toggleSublist(sublist)}
+                    onEdit={(itemId, newText) => editItem(list.id, itemId, newText, sublist)}
                   />
                 ))}
               </div>
