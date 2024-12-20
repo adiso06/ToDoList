@@ -71,4 +71,8 @@ The application will be available at [http://localhost:3000](http://localhost:30
 3. Edit or delete tasks by clicking the respective buttons next to each task.
 4. Manage recurring tasks by creating lists that you can reuse.
 
+## ToDo
+[ ] can't delete sublists lists 
+[ ] can't drag individual tasks 
+[ ] can't create ful llists 
 
