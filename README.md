@@ -24,7 +24,7 @@ To get a local copy up and running, follow these simple steps.
 
 ### Prerequisites
 
-- Node.js 18+ (20 recommended)
+- Node.js 20.19+ or 22.12+
 
 ### Installation
 
