@@ -24,55 +24,28 @@ To get a local copy up and running, follow these simple steps.
 
 ### Prerequisites
 
-- Node.js installed on your local machine
-- Firebase account
+- Node.js 18+ (20 recommended)
 
 ### Installation
 
-1. Clone the repository
-   ```sh
-   git clone https://github.com/adiso06/ToDoList.git
-   ```
-2. Navigate to the project directory
-   ```sh
-   cd ToDoList
-   ```
-3. Install the dependencies
-   ```sh
-   npm install
-   ```
-### Firebase Setup
-1. Go to the Firebase Console and create a new project.
-2. Navigate to Project Settings, then add a new web app.
-3. Copy the Firebase configuration settings.
-4. Create a .env file in the root of your project and add your Firebase configuration:
-```
-REACT_APP_FIREBASE_API_KEY=your_api_key
-REACT_APP_FIREBASE_AUTH_DOMAIN=your_auth_domain
-REACT_APP_FIREBASE_PROJECT_ID=your_project_id
-REACT_APP_FIREBASE_STORAGE_BUCKET=your_storage_bucket
-REACT_APP_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
-REACT_APP_FIREBASE_APP_ID=your_app_id
-```
-
-### Running the Application
-To start the application, run:
-
 ```sh
-npm start
+git clone https://github.com/adiso06/ToDoList.git
+cd ToDoList
+npm install
+npm run dev
 ```
 
-The application will be available at [http://localhost:3000](http://localhost:3000).
+The dev server runs at [http://localhost:5173](http://localhost:5173). The Firebase config lives in `src/lib/firebase.ts`; swap in your own project's config to use a different database.
+
+### Deploying
+
+Pushing to `main` builds the app and publishes `dist/` to the `gh-pages` branch via `.github/workflows/deploy.yml`. `npm run deploy` does the same from your machine.
 
 ## Usage
 
-1. Create a new todo list by clicking "New List".
-2. Add tasks to your list by typing in the input field and pressing "Enter".
-3. Edit or delete tasks by clicking the respective buttons next to each task.
-4. Manage recurring tasks by creating lists that you can reuse.
-
-## ToDo
-[ ] can't delete sublists lists 
-[ ] can't drag individual tasks 
-[ ] can't create ful llists 
-
+- **New list**: the button in the header. Double-click a list name (or use its `⋯` menu) to rename it.
+- **Items**: type in "Add item" and press Enter. Pasting several lines adds one item per line. Click an item's text to edit it; clearing the text deletes it.
+- **Sections**: `⋯` → Add section. Each section has its own menu to rename, uncheck, or delete it.
+- **Reordering**: drag the grip handle to reorder items (within or between sections) and lists.
+- **Reusable lists**: `⋯` → *Save as template* saves the list's current contents. *Reset to template* brings it back later, all unchecked. *Uncheck all* just clears the checkmarks.
+- Deletes and bulk actions can be undone from the toast at the bottom of the screen.

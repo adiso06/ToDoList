@@ -2,12 +2,18 @@ export interface TodoItem {
   id: string;
   text: string;
   completed: boolean;
-  sublist?: string;
 }
 
-export interface TodoList {
+export type Sublists = Record<string, TodoItem[]>;
+
+export interface ListContents {
+  items: TodoItem[];
+  sublists: Sublists | null;
+}
+
+export interface TodoList extends ListContents {
   id: string;
   name: string;
-  items: TodoItem[];
-  sublists: Record<string, TodoItem[]> | null;
+  order?: number;
+  template?: ListContents | null;
 }

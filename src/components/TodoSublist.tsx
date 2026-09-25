@@ -1,136 +1,107 @@
-import React, { useState } from 'react';
-import { Plus, ChevronRight } from 'lucide-react';
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent
-} from '@dnd-kit/core';
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-  arrayMove
-} from '@dnd-kit/sortable';
-import { DraggableTodoItem } from './DraggableTodoItem';
-import { useTodoStore } from '../store/todoStore';
-import type { TodoItem as TodoItemType } from '../types';
+import { useState } from 'react';
+import { useDroppable } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { ChevronRight, Pencil, RotateCcw, Trash2 } from 'lucide-react';
+import { SortableTodoItem } from './TodoItem';
+import { AddRow } from './AddRow';
+import { InlineEdit } from './InlineEdit';
+import { Menu } from './Menu';
+import { containerDropId, sectionKey, useTodoStore } from '../store/todoStore';
+import type { TodoItem } from '../types';
 
-interface TodoSublistProps {
+interface Props {
   listId: string;
   name: string;
-  items: TodoItemType[];
-  onToggle: (itemId: string) => void;
-  onAdd: (text: string) => void;
-  onDelete: (itemId: string) => void;
-  onEdit: (itemId: string, newText: string) => void;
+  items: TodoItem[];
 }
 
-export function TodoSublist({
-  listId,
-  name,
-  items,
-  onToggle,
-  onAdd,
-  onDelete,
-  onEdit
-}: TodoSublistProps) {
-  const { collapsedSublists, toggleSublistCollapse, reorderSublist } = useTodoStore();
-  const [newItemText, setNewItemText] = useState('');
-
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (newItemText.trim()) {
-      onAdd(newItemText.trim());
-      setNewItemText('');
-    }
-  };
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    
-    if (over && active.id !== over.id) {
-      const oldIndex = items.findIndex(item => item.id === active.id);
-      const newIndex = items.findIndex(item => item.id === over.id);
-      
-      const newItems = arrayMove(items, oldIndex, newIndex);
-      reorderSublist(listId, name, newItems);
-    }
-  };
-
-  const isExpanded = !collapsedSublists.get(listId)?.has(name);
+export function TodoSublist({ listId, name, items }: Props) {
+  const collapsed = useTodoStore((s) => s.collapsedSections.has(sectionKey(listId, name)));
+  const { toggleSectionCollapse, renameSection, deleteSection, uncheckAll } = useTodoStore.getState();
+  const [isRenaming, setIsRenaming] = useState(false);
+  // The whole section (header included) accepts drops, so items can be moved
+  // into empty or collapsed sections.
+  const { setNodeRef, isOver } = useDroppable({ id: containerDropId(name) });
+  const done = items.filter((item) => item.completed).length;
 
   return (
-    <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden bg-gray-50 dark:bg-gray-800/50">
-      <button
-        onClick={() => toggleSublistCollapse(listId, name)}
-        className="w-full p-4 text-left font-medium flex items-center justify-between transition-colors hover:bg-gray-100 dark:hover:bg-gray-700/50"
-      >
-        <div className="flex items-center gap-3">
-          <ChevronRight
-            size={20}
-            className={`transform transition-transform ${isExpanded ? 'rotate-90' : ''} text-gray-500`}
+    <section
+      ref={setNodeRef}
+      className={`mt-2 rounded-lg border-t border-zinc-100 pt-2 transition-colors dark:border-zinc-800 ${
+        isOver && collapsed ? 'bg-blue-50 dark:bg-blue-500/10' : ''
+      }`}
+    >
+      <div className="flex items-center gap-1 pr-1">
+        {isRenaming ? (
+          <InlineEdit
+            initial={name}
+            ariaLabel="Section name"
+            className="ml-1 flex-1 font-semibold"
+            onCancel={() => setIsRenaming(false)}
+            onCommit={(value) => {
+              if (!value || renameSection(listId, name, value)) {
+                setIsRenaming(false);
+                return true;
+              }
+              return false;
+            }}
           />
-          <span className="text-gray-900 dark:text-white">{name}</span>
-        </div>
-        <span className="text-sm text-gray-500 dark:text-gray-400">
-          {items.filter(item => item.completed).length}/{items.length}
-        </span>
-      </button>
-      
-      <div className={`overflow-hidden transition-all ${isExpanded ? 'max-h-[1000px]' : 'max-h-0'}`}>
-        <div className="p-4 space-y-4 border-t border-gray-200 dark:border-gray-700">
-          <form onSubmit={handleSubmit} className="relative">
-            <input
-              type="text"
-              value={newItemText}
-              onChange={(e) => setNewItemText(e.target.value)}
-              placeholder="Add new item to sublist..."
-              className="w-full px-4 py-3 pr-12 border border-gray-200 dark:border-gray-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-white shadow-sm"
-            />
-            <button
-              type="submit"
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              title="Add Item"
-            >
-              <Plus size={20} />
-            </button>
-          </form>
-          
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
+        ) : (
+          <button
+            type="button"
+            aria-expanded={!collapsed}
+            onClick={() => toggleSectionCollapse(listId, name)}
+            onDoubleClick={() => setIsRenaming(true)}
+            className="flex min-w-0 flex-1 items-center gap-1 rounded-md py-1.5 text-left"
           >
-            <SortableContext
-              items={items.map(item => item.id)}
-              strategy={verticalListSortingStrategy}
-            >
-              <div className="space-y-2 pl-2">
-                {items.map(item => (
-                  <DraggableTodoItem
-                    key={item.id}
-                    {...item}
-                    onToggle={onToggle}
-                    onDelete={onDelete}
-                    onEdit={onEdit}
-                  />
-                ))}
-              </div>
-            </SortableContext>
-          </DndContext>
-        </div>
+            <span className="flex w-5 shrink-0 justify-center text-zinc-400">
+              <ChevronRight size={16} className={`transition-transform ${collapsed ? '' : 'rotate-90'}`} />
+            </span>
+            <span className="truncate text-sm font-semibold text-zinc-700 dark:text-zinc-200">{name}</span>
+            <span className="ml-1.5 shrink-0 text-xs tabular-nums text-zinc-400 dark:text-zinc-500">
+              {done}/{items.length}
+            </span>
+          </button>
+        )}
+        <Menu
+          label={`${name} options`}
+          actions={[
+            { label: 'Rename section', icon: Pencil, onSelect: () => setIsRenaming(true) },
+            {
+              label: 'Uncheck section',
+              icon: RotateCcw,
+              disabled: done === 0,
+              onSelect: () => uncheckAll(listId, name)
+            },
+            'divider',
+            { label: 'Delete section', icon: Trash2, danger: true, onSelect: () => deleteSection(listId, name) }
+          ]}
+        />
       </div>
-    </div>
+
+      {!collapsed && (
+        <>
+          <SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}>
+            <ul>
+              {items.map((item) => (
+                <SortableTodoItem
+                  key={item.id}
+                  item={item}
+                  container={name}
+                  onToggle={() => useTodoStore.getState().toggleItem(listId, item.id)}
+                  onEdit={(text) => useTodoStore.getState().editItem(listId, item.id, text)}
+                  onDelete={() => useTodoStore.getState().deleteItem(listId, item.id)}
+                />
+              ))}
+            </ul>
+          </SortableContext>
+          <AddRow
+            className="pl-5"
+            placeholder={`Add to ${name}`}
+            onAdd={(texts) => useTodoStore.getState().addItems(listId, texts, name)}
+          />
+        </>
+      )}
+    </section>
   );
 }

@@ -1,5 +1,9 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager
+} from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: "AIzaSyBq0KwZ8urihRvMB2vUEuNfbG1PCcZqwt4",
@@ -12,4 +16,10 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+
+// Cache lists in IndexedDB so the app opens instantly and works offline;
+// writes made offline sync once the connection comes back.
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+  ignoreUndefinedProperties: true
+});
