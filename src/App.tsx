@@ -84,7 +84,7 @@ function App() {
 
   const remainingCount = lists.reduce(
     (sum, list) =>
-      sum + [...list.items, ...Object.values(list.sublists ?? {}).flat()].filter((item) => !item.completed).length,
+      sum + [...list.items, ...Object.values(list.sublists ?? {}).flat()].filter((item) => !item.completed && !item.skipped).length,
     0
   );
 

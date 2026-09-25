@@ -15,30 +15,13 @@ import {
   type DragStartEvent,
   type UniqueIdentifier
 } from '@dnd-kit/core';
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy
-} from '@dnd-kit/sortable';
+import { arrayMove, sortableKeyboardCoordinates, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import {
-  BookmarkPlus,
-  ChevronDown,
-  CopyCheck,
-  GripVertical,
-  History,
-  ListPlus,
-  ListX,
-  Pencil,
-  RotateCcw,
-  Trash2
-} from 'lucide-react';
+import { ChevronDown, CopyCheck, GripVertical, ListPlus, ListX, Pencil, RotateCcw, Trash2 } from 'lucide-react';
 import { containerDropId, ROOT, useTodoStore } from '../store/todoStore';
 import { TodoSublist } from './TodoSublist';
-import { SortableTodoItem, TodoItemRow } from './TodoItem';
-import { AddRow } from './AddRow';
+import { TodoItemRow } from './TodoItem';
+import { ItemGroup } from './ItemGroup';
 import { InlineEdit } from './InlineEdit';
 import { Menu } from './Menu';
 import type { TodoItem, TodoList as TodoListType } from '../types';
@@ -69,6 +52,7 @@ interface Props {
 
 export function TodoList({ list, autoFocus }: Props) {
   const isCollapsed = useTodoStore((s) => s.collapsedLists.has(list.id));
+  const showDone = useTodoStore((s) => s.shownDone.has(list.id));
   const store = useTodoStore.getState();
   const [isRenaming, setIsRenaming] = useState(false);
   const [isAddingSection, setIsAddingSection] = useState(false);
@@ -90,10 +74,12 @@ export function TodoList({ list, autoFocus }: Props) {
 
   const containers = dragContainers ?? toContainers(list);
   const all = Object.values(toContainers(list)).flat();
-  const done = all.filter((item) => item.completed).length;
-  const total = all.length;
+  const counted = all.filter((item) => !item.skipped);
+  const done = counted.filter((item) => item.completed).length;
+  const total = counted.length;
+  const skipped = all.length - total;
+  const resettable = done + skipped > 0;
   const sectionNames = Object.keys(list.sublists ?? {});
-  const hasTemplate = store.hasTemplate(list.id);
 
   const findContainer = (id: UniqueIdentifier) => {
     if (isContainerId(id)) return String(id).slice('container:'.length);
@@ -146,12 +132,6 @@ export function TodoList({ list, autoFocus }: Props) {
     setDragContainers(null);
     setActiveItem(null);
   };
-
-  const itemHandlers = (item: TodoItem) => ({
-    onToggle: () => store.toggleItem(list.id, item.id),
-    onEdit: (text: string) => store.editItem(list.id, item.id, text),
-    onDelete: () => store.deleteItem(list.id, item.id)
-  });
 
   return (
     <article
@@ -216,16 +196,8 @@ export function TodoList({ list, autoFocus }: Props) {
               }
             },
             'divider',
-            { label: 'Uncheck all', icon: RotateCcw, disabled: done === 0, onSelect: () => store.uncheckAll(list.id) },
+            { label: 'Reset list', icon: RotateCcw, disabled: !resettable, onSelect: () => store.resetList(list.id) },
             { label: 'Remove checked items', icon: ListX, disabled: done === 0, onSelect: () => store.clearCompleted(list.id) },
-            'divider',
-            { label: 'Save as template', icon: BookmarkPlus, onSelect: () => store.saveAsTemplate(list.id) },
-            {
-              label: 'Reset to template',
-              icon: History,
-              disabled: !hasTemplate,
-              onSelect: () => store.restoreTemplate(list.id)
-            },
             'divider',
             { label: 'Delete list', icon: Trash2, danger: true, onSelect: () => store.deleteList(list.id) }
           ]}
@@ -250,10 +222,10 @@ export function TodoList({ list, autoFocus }: Props) {
               </span>
               <button
                 type="button"
-                onClick={() => store.uncheckAll(list.id)}
+                onClick={() => store.resetList(list.id)}
                 className="rounded-md px-2 py-0.5 font-medium hover:bg-blue-100 dark:hover:bg-blue-500/20"
               >
-                Uncheck all
+                Reset list
               </button>
             </div>
           )}
@@ -267,27 +239,40 @@ export function TodoList({ list, autoFocus }: Props) {
             onDragCancel={handleDragCancel}
           >
             <div ref={setRootDropRef}>
-              <SortableContext items={containers[ROOT].map((item) => item.id)} strategy={verticalListSortingStrategy}>
-                <ul>
-                  {containers[ROOT].map((item) => (
-                    <SortableTodoItem key={item.id} item={item} container={ROOT} {...itemHandlers(item)} />
-                  ))}
-                </ul>
-              </SortableContext>
-              <AddRow
-                className="pl-5"
+              <ItemGroup
+                listId={list.id}
+                container={ROOT}
+                items={containers[ROOT]}
+                showDone={showDone}
                 placeholder="Add item"
                 autoFocus={autoFocus}
-                onAdd={(texts) => store.addItems(list.id, texts, ROOT)}
               />
             </div>
 
             {sectionNames.map((name) => (
-              <TodoSublist key={name} listId={list.id} name={name} items={containers[name] ?? []} />
+              <TodoSublist
+                key={name}
+                listId={list.id}
+                name={name}
+                items={containers[name] ?? []}
+                showDone={showDone}
+              />
             ))}
 
             <DragOverlay>{activeItem && <TodoItemRow item={activeItem} overlay />}</DragOverlay>
           </DndContext>
+
+          {done + skipped > 0 && (
+            <button
+              type="button"
+              aria-expanded={showDone}
+              onClick={() => store.toggleShowDone(list.id)}
+              className="ml-6 mt-1 flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+            >
+              <ChevronDown size={14} className={`transition-transform ${showDone ? '' : '-rotate-90'}`} />
+              {[done > 0 && `${done} checked`, skipped > 0 && `${skipped} skipped`].filter(Boolean).join(' · ')}
+            </button>
+          )}
 
           {isAddingSection && (
             <div className="mt-2 flex border-t border-zinc-100 pl-6 pr-2 pt-2 dark:border-zinc-800">

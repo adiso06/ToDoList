@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { doc, updateDoc, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { getLegacyTemplate } from '../lib/initializeData';
 import type { ListContents, TodoItem, TodoList } from '../types';
 
 // Container id used for a list's top-level items (sections use their name).
@@ -17,6 +16,7 @@ interface TodoStore {
   lists: TodoList[];
   collapsedLists: Set<string>;
   collapsedSections: Set<string>;
+  shownDone: Set<string>;
   darkMode: boolean;
   toast: Toast | null;
 
@@ -26,31 +26,31 @@ interface TodoStore {
   deleteList: (listId: string) => void;
   reorderLists: (newLists: TodoList[]) => void;
 
-  addItems: (listId: string, texts: string[], container: string) => void;
+  addItems: (listId: string, texts: string[], container: string, oneOff?: boolean) => void;
   toggleItem: (listId: string, itemId: string) => void;
+  toggleOneOff: (listId: string, itemId: string) => void;
+  toggleSkipped: (listId: string, itemId: string) => void;
   editItem: (listId: string, itemId: string, text: string) => void;
   deleteItem: (listId: string, itemId: string) => void;
   setContents: (listId: string, contents: ListContents) => void;
-  uncheckAll: (listId: string, container?: string) => void;
+  resetList: (listId: string, container?: string) => void;
   clearCompleted: (listId: string) => void;
 
   createSection: (listId: string, name: string) => boolean;
   renameSection: (listId: string, oldName: string, newName: string) => boolean;
   deleteSection: (listId: string, name: string) => void;
 
-  saveAsTemplate: (listId: string) => void;
-  restoreTemplate: (listId: string) => void;
-  hasTemplate: (listId: string) => boolean;
-
   toggleDarkMode: () => void;
   toggleListCollapse: (listId: string) => void;
   toggleSectionCollapse: (listId: string, name: string) => void;
+  toggleShowDone: (listId: string) => void;
   showToast: (message: string, undo?: () => void) => void;
   dismissToast: (id: number) => void;
 }
 
 const COLLAPSED_LISTS_KEY = 'todo:collapsedLists';
 const COLLAPSED_SECTIONS_KEY = 'todo:collapsedSections';
+const SHOWN_DONE_KEY = 'todo:shownDone';
 
 // Droppable id for a whole container, so items can be dropped into empty sections.
 export const containerDropId = (container: string) => `container:${container}`;
@@ -115,7 +115,14 @@ const mapAll = (c: ListContents, fn: (item: TodoItem) => TodoItem | null): ListC
 
 const allItems = (c: ListContents) => [...c.items, ...Object.values(c.sublists ?? {}).flat()];
 
-const unchecked = (c: ListContents) => mapAll(c, (item) => ({ ...item, completed: false }));
+// Starting a list over: staples are unchecked and unskipped, one-offs that
+// were bought/packed (or skipped) are dropped, and unfinished one-offs stay.
+const resetItem = (item: TodoItem): TodoItem | null =>
+  item.oneOff && (item.completed || item.skipped)
+    ? null
+    : { id: item.id, text: item.text, completed: false, ...(item.oneOff && { oneOff: true }) };
+
+const isResettable = (item: TodoItem) => item.completed || item.skipped;
 
 const sortLists = (lists: TodoList[]) =>
   [...lists].sort(
@@ -131,7 +138,8 @@ let toastId = 0;
 export const useTodoStore = create<TodoStore>((set, get) => {
   const reportError = (error: unknown) => {
     console.error(error);
-    get().showToast("Couldn't save your change. Check your connection and try again.");
+    const code = (error as { code?: string })?.code;
+    get().showToast(`Couldn't save your change${code ? ` (${code})` : ''}. Check your connection and try again.`);
   };
 
   const getList = (listId: string) => get().lists.find((list) => list.id === listId);
@@ -163,6 +171,7 @@ export const useTodoStore = create<TodoStore>((set, get) => {
     lists: [],
     collapsedLists: loadSet(COLLAPSED_LISTS_KEY),
     collapsedSections: loadSet(COLLAPSED_SECTIONS_KEY),
+    shownDone: loadSet(SHOWN_DONE_KEY),
     darkMode: getInitialTheme(),
     toast: null,
 
@@ -203,17 +212,35 @@ export const useTodoStore = create<TodoStore>((set, get) => {
       batch.commit().catch(reportError);
     },
 
-    addItems: (listId, texts, container) =>
+    addItems: (listId, texts, container, oneOff) =>
       updateContents(listId, (c) =>
         withContainer(c, container, [
           ...getContainer(c, container),
-          ...texts.map((text) => ({ id: newId(), text, completed: false }))
+          ...texts.map((text) => ({ id: newId(), text, completed: false, ...(oneOff && { oneOff: true }) }))
         ])
       ),
 
     toggleItem: (listId, itemId) =>
       updateContents(listId, (c) =>
         mapAll(c, (item) => (item.id === itemId ? { ...item, completed: !item.completed } : item))
+      ),
+
+    toggleOneOff: (listId, itemId) =>
+      updateContents(listId, (c) =>
+        mapAll(c, (item) => {
+          if (item.id !== itemId) return item;
+          const { oneOff, ...rest } = item;
+          return oneOff ? rest : { ...rest, oneOff: true };
+        })
+      ),
+
+    toggleSkipped: (listId, itemId) =>
+      updateContents(listId, (c) =>
+        mapAll(c, (item) => {
+          if (item.id !== itemId) return item;
+          const { skipped, ...rest } = item;
+          return skipped ? rest : { ...rest, completed: false, skipped: true };
+        })
       ),
 
     editItem: (listId, itemId, text) =>
@@ -238,15 +265,20 @@ export const useTodoStore = create<TodoStore>((set, get) => {
 
     setContents: (listId, contents) => updateContents(listId, () => contents),
 
-    uncheckAll: (listId, container) =>
+    resetList: (listId, container) => {
+      const list = getList(listId);
+      if (!list) return;
+      const scope = container === undefined ? allItems(list) : getContainer(list, container);
+      if (!scope.some(isResettable)) return;
       updateContents(
         listId,
         (c) =>
           container === undefined
-            ? unchecked(c)
-            : withContainer(c, container, getContainer(c, container).map((item) => ({ ...item, completed: false }))),
-        'Unchecked all items'
-      ),
+            ? mapAll(c, resetItem)
+            : withContainer(c, container, getContainer(c, container).flatMap((item) => resetItem(item) ?? [])),
+        container === undefined || container === ROOT ? `Reset “${list.name}”` : `Reset “${container}”`
+      );
+    },
 
     clearCompleted: (listId) => {
       const list = getList(listId);
@@ -302,22 +334,6 @@ export const useTodoStore = create<TodoStore>((set, get) => {
         `Deleted section “${name}”`
       ),
 
-    saveAsTemplate: (listId) => {
-      const list = getList(listId);
-      if (!list) return;
-      patchList(listId, { template: unchecked(contentsOf(list)) });
-      get().showToast('Saved as template. “Reset to template” will bring this list back.');
-    },
-
-    restoreTemplate: (listId) => {
-      const list = getList(listId);
-      const template = list?.template ?? getLegacyTemplate(listId);
-      if (!template) return;
-      updateContents(listId, () => unchecked(template), 'Reset to template');
-    },
-
-    hasTemplate: (listId) => Boolean(getList(listId)?.template ?? getLegacyTemplate(listId)),
-
     toggleDarkMode: () => {
       const darkMode = !get().darkMode;
       try {
@@ -341,6 +357,13 @@ export const useTodoStore = create<TodoStore>((set, get) => {
       if (!collapsedSections.delete(key)) collapsedSections.add(key);
       saveSet(COLLAPSED_SECTIONS_KEY, collapsedSections);
       set({ collapsedSections });
+    },
+
+    toggleShowDone: (listId) => {
+      const shownDone = new Set(get().shownDone);
+      if (!shownDone.delete(listId)) shownDone.add(listId);
+      saveSet(SHOWN_DONE_KEY, shownDone);
+      set({ shownDone });
     },
 
     showToast: (message, undo) => set({ toast: { id: ++toastId, message, undo } }),

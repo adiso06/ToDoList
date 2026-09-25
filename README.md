@@ -43,9 +43,14 @@ Pushing to `main` builds the app and publishes `dist/` to the `gh-pages` branch 
 
 ## Usage
 
+Built for lists you run through again and again: groceries, packing, chores.
+
 - **New list**: the button in the header. Double-click a list name (or use its `⋯` menu) to rename it.
-- **Items**: type in "Add item" and press Enter. Pasting several lines adds one item per line. Click an item's text to edit it; clearing the text deletes it.
-- **Sections**: `⋯` → Add section. Each section has its own menu to rename, uncheck, or delete it.
+- **Items**: type in "Add item" and press Enter (or tap away). Pasting several lines adds one item per line. Click an item's text to edit it; clearing the text deletes it.
+- **Staples vs. one-offs**: items stay on the list by default. Tap *Just once* while adding (or pick *Just this time* from an item's `⋯` menu) for things you only need this time; they show a "once" tag.
+- **Skip this time**: from an item's `⋯` menu, for things you don't need on this trip. Skipped items are hidden and don't count toward progress.
+- **Checked items** drop out of the way into a "3 checked · 1 skipped" row at the bottom of the list; tap it to show them.
+- **Reset list** (`⋯` menu, or the button when everything's done) starts the list over: staples are unchecked, skipped items come back, and one-offs you've checked off are removed. Sections can be reset on their own too.
+- **Sections**: `⋯` → Add section. Each section has its own menu to rename, reset, or delete it.
 - **Reordering**: drag the grip handle to reorder items (within or between sections) and lists.
-- **Reusable lists**: `⋯` → *Save as template* saves the list's current contents. *Reset to template* brings it back later, all unchecked. *Uncheck all* just clears the checkmarks.
-- Deletes and bulk actions can be undone from the toast at the bottom of the screen.
+- Deletes and resets can be undone from the toast at the bottom of the screen.

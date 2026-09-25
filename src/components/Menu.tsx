@@ -12,9 +12,10 @@ export interface MenuAction {
 interface Props {
   label: string;
   actions: (MenuAction | 'divider')[];
+  className?: string;
 }
 
-export function Menu({ label, actions }: Props) {
+export function Menu({ label, actions, className = '' }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -33,7 +34,7 @@ export function Menu({ label, actions }: Props) {
   }, [open]);
 
   return (
-    <div ref={ref} className="relative shrink-0">
+    <div ref={ref} className={`relative shrink-0 ${open ? '!opacity-100' : ''} ${className}`}>
       <button
         type="button"
         aria-label={label}

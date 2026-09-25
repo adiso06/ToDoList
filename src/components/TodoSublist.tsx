@@ -1,9 +1,7 @@
 import { useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { ChevronRight, Pencil, RotateCcw, Trash2 } from 'lucide-react';
-import { SortableTodoItem } from './TodoItem';
-import { AddRow } from './AddRow';
+import { ItemGroup } from './ItemGroup';
 import { InlineEdit } from './InlineEdit';
 import { Menu } from './Menu';
 import { containerDropId, sectionKey, useTodoStore } from '../store/todoStore';
@@ -13,16 +11,19 @@ interface Props {
   listId: string;
   name: string;
   items: TodoItem[];
+  showDone: boolean;
 }
 
-export function TodoSublist({ listId, name, items }: Props) {
+export function TodoSublist({ listId, name, items, showDone }: Props) {
   const collapsed = useTodoStore((s) => s.collapsedSections.has(sectionKey(listId, name)));
-  const { toggleSectionCollapse, renameSection, deleteSection, uncheckAll } = useTodoStore.getState();
+  const { toggleSectionCollapse, renameSection, deleteSection, resetList } = useTodoStore.getState();
   const [isRenaming, setIsRenaming] = useState(false);
   // The whole section (header included) accepts drops, so items can be moved
   // into empty or collapsed sections.
   const { setNodeRef, isOver } = useDroppable({ id: containerDropId(name) });
-  const done = items.filter((item) => item.completed).length;
+  const counted = items.filter((item) => !item.skipped);
+  const done = counted.filter((item) => item.completed).length;
+  const resettable = items.some((item) => item.completed || item.skipped);
 
   return (
     <section
@@ -59,7 +60,7 @@ export function TodoSublist({ listId, name, items }: Props) {
             </span>
             <span className="truncate text-sm font-semibold text-zinc-700 dark:text-zinc-200">{name}</span>
             <span className="ml-1.5 shrink-0 text-xs tabular-nums text-zinc-400 dark:text-zinc-500">
-              {done}/{items.length}
+              {done}/{counted.length}
             </span>
           </button>
         )}
@@ -68,10 +69,10 @@ export function TodoSublist({ listId, name, items }: Props) {
           actions={[
             { label: 'Rename section', icon: Pencil, onSelect: () => setIsRenaming(true) },
             {
-              label: 'Uncheck section',
+              label: 'Reset section',
               icon: RotateCcw,
-              disabled: done === 0,
-              onSelect: () => uncheckAll(listId, name)
+              disabled: !resettable,
+              onSelect: () => resetList(listId, name)
             },
             'divider',
             { label: 'Delete section', icon: Trash2, danger: true, onSelect: () => deleteSection(listId, name) }
@@ -80,27 +81,7 @@ export function TodoSublist({ listId, name, items }: Props) {
       </div>
 
       {!collapsed && (
-        <>
-          <SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}>
-            <ul>
-              {items.map((item) => (
-                <SortableTodoItem
-                  key={item.id}
-                  item={item}
-                  container={name}
-                  onToggle={() => useTodoStore.getState().toggleItem(listId, item.id)}
-                  onEdit={(text) => useTodoStore.getState().editItem(listId, item.id, text)}
-                  onDelete={() => useTodoStore.getState().deleteItem(listId, item.id)}
-                />
-              ))}
-            </ul>
-          </SortableContext>
-          <AddRow
-            className="pl-5"
-            placeholder={`Add to ${name}`}
-            onAdd={(texts) => useTodoStore.getState().addItems(listId, texts, name)}
-          />
-        </>
+        <ItemGroup listId={listId} container={name} items={items} showDone={showDone} placeholder={`Add to ${name}`} />
       )}
     </section>
   );
