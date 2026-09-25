@@ -39,6 +39,7 @@ interface TodoStore {
   createSection: (listId: string, name: string) => boolean;
   renameSection: (listId: string, oldName: string, newName: string) => boolean;
   deleteSection: (listId: string, name: string) => void;
+  moveSection: (listId: string, name: string, offset: -1 | 1) => void;
 
   toggleDarkMode: () => void;
   toggleListCollapse: (listId: string) => void;
@@ -131,7 +132,13 @@ const sortLists = (lists: TodoList[]) =>
 
 // The id lives in the document path, not its fields. JSON round-trip drops it
 // along with any other undefined values, which Firestore rejects.
-const toDoc = (list: TodoList) => JSON.parse(JSON.stringify({ ...list, id: undefined }));
+const toDoc = (list: TodoList) =>
+  JSON.parse(JSON.stringify({ ...list, id: undefined, sectionOrder: Object.keys(list.sublists ?? {}) }));
+
+// Firestore returns map keys in arbitrary order, so section order is stored
+// separately as an array (see normalizeContents) whenever sections change.
+const toDocPatch = (patch: Partial<TodoList>) =>
+  'sublists' in patch ? { ...patch, sectionOrder: Object.keys(patch.sublists ?? {}) } : patch;
 
 let toastId = 0;
 
@@ -146,7 +153,7 @@ export const useTodoStore = create<TodoStore>((set, get) => {
 
   const patchList = (listId: string, patch: Partial<TodoList>) => {
     set({ lists: get().lists.map((list) => (list.id === listId ? { ...list, ...patch } : list)) });
-    updateDoc(doc(db, 'lists', listId), patch).catch(reportError);
+    updateDoc(doc(db, 'lists', listId), toDocPatch(patch)).catch(reportError);
   };
 
   // Update a list's items/sections optimistically, then persist. When
@@ -177,17 +184,19 @@ export const useTodoStore = create<TodoStore>((set, get) => {
 
     setLists: (lists) => set({ lists: sortLists(lists) }),
 
+    // New lists go on top, next to the form that created them. Every list's
+    // order is saved so the server's copy sorts exactly like the screen.
     createList: (name) => {
-      const orders = get().lists.map((list, i) => list.order ?? i);
-      const newList: TodoList = {
-        id: newId(),
-        name,
-        order: orders.length ? Math.max(...orders) + 1 : 0,
-        items: [],
-        sublists: null
-      };
-      set({ lists: [...get().lists, newList] });
-      setDoc(doc(db, 'lists', newList.id), toDoc(newList)).catch(reportError);
+      const newList: TodoList = { id: newId(), name, items: [], sublists: null };
+      const ordered = [newList, ...get().lists].map((list, order) => ({ ...list, order }));
+      set({ lists: ordered });
+      const batch = writeBatch(db);
+      ordered.forEach((list) =>
+        list.id === newList.id
+          ? batch.set(doc(db, 'lists', list.id), toDoc(list))
+          : batch.update(doc(db, 'lists', list.id), { order: list.order })
+      );
+      batch.commit().catch(reportError);
       return newList.id;
     },
 
@@ -323,6 +332,16 @@ export const useTodoStore = create<TodoStore>((set, get) => {
       }
       return true;
     },
+
+    moveSection: (listId, name, offset) =>
+      updateContents(listId, (c) => {
+        const names = Object.keys(c.sublists ?? {});
+        const from = names.indexOf(name);
+        const to = from + offset;
+        if (from === -1 || to < 0 || to >= names.length) return c;
+        [names[from], names[to]] = [names[to], names[from]];
+        return { ...c, sublists: Object.fromEntries(names.map((n) => [n, c.sublists![n]])) };
+      }),
 
     deleteSection: (listId, name) =>
       updateContents(

@@ -42,7 +42,7 @@ export const defaultLists: TodoList[] = [
 
 export const seedDefaultLists = async () => {
   for (const { id, ...data } of defaultLists) {
-    await setDoc(doc(db, 'lists', id), data);
+    await setDoc(doc(db, 'lists', id), { ...data, sectionOrder: Object.keys(data.sublists ?? {}) });
   }
 };
 
@@ -60,13 +60,25 @@ const normalizeItems = (value: unknown): TodoItem[] =>
     : [];
 
 export const normalizeContents = (data: Record<string, unknown> | null | undefined): ListContents => {
-  const sublists =
-    data?.sublists && typeof data.sublists === 'object'
-      ? Object.fromEntries(
-          Object.entries(data.sublists as Record<string, unknown>).map(([name, items]) => [name, normalizeItems(items)])
-        )
-      : null;
-  return { items: normalizeItems(data?.items), sublists };
+  if (!data?.sublists || typeof data.sublists !== 'object') {
+    return { items: normalizeItems(data?.items), sublists: null };
+  }
+  const raw = data.sublists as Record<string, unknown>;
+  // Firestore hands back map keys in arbitrary order (and it can change after
+  // every write), so order sections by the saved sectionOrder array. Sections
+  // it doesn't mention (older documents) follow alphabetically, so the order
+  // is at least stable until the next write saves one.
+  const saved = Array.isArray(data.sectionOrder) ? data.sectionOrder.map(String) : [];
+  const names = [
+    ...saved.filter((name, i) => name in raw && saved.indexOf(name) === i),
+    ...Object.keys(raw)
+      .filter((name) => !saved.includes(name))
+      .sort((a, b) => a.localeCompare(b))
+  ];
+  return {
+    items: normalizeItems(data.items),
+    sublists: Object.fromEntries(names.map((name) => [name, normalizeItems(raw[name])]))
+  };
 };
 
 // Coerce whatever is stored in Firestore into the shape the UI expects, so

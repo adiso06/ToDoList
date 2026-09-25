@@ -249,13 +249,15 @@ export function TodoList({ list, autoFocus }: Props) {
               />
             </div>
 
-            {sectionNames.map((name) => (
+            {sectionNames.map((name, i) => (
               <TodoSublist
                 key={name}
                 listId={list.id}
                 name={name}
                 items={containers[name] ?? []}
                 showDone={showDone}
+                isFirst={i === 0}
+                isLast={i === sectionNames.length - 1}
               />
             ))}
 

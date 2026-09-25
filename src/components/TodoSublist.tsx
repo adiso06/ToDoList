@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import { ChevronRight, Pencil, RotateCcw, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronRight, Pencil, RotateCcw, Trash2 } from 'lucide-react';
 import { ItemGroup } from './ItemGroup';
 import { InlineEdit } from './InlineEdit';
 import { Menu } from './Menu';
@@ -12,11 +12,13 @@ interface Props {
   name: string;
   items: TodoItem[];
   showDone: boolean;
+  isFirst: boolean;
+  isLast: boolean;
 }
 
-export function TodoSublist({ listId, name, items, showDone }: Props) {
+export function TodoSublist({ listId, name, items, showDone, isFirst, isLast }: Props) {
   const collapsed = useTodoStore((s) => s.collapsedSections.has(sectionKey(listId, name)));
-  const { toggleSectionCollapse, renameSection, deleteSection, resetList } = useTodoStore.getState();
+  const { toggleSectionCollapse, renameSection, deleteSection, moveSection, resetList } = useTodoStore.getState();
   const [isRenaming, setIsRenaming] = useState(false);
   // The whole section (header included) accepts drops, so items can be moved
   // into empty or collapsed sections.
@@ -68,6 +70,8 @@ export function TodoSublist({ listId, name, items, showDone }: Props) {
           label={`${name} options`}
           actions={[
             { label: 'Rename section', icon: Pencil, onSelect: () => setIsRenaming(true) },
+            { label: 'Move up', icon: ArrowUp, disabled: isFirst, onSelect: () => moveSection(listId, name, -1) },
+            { label: 'Move down', icon: ArrowDown, disabled: isLast, onSelect: () => moveSection(listId, name, 1) },
             {
               label: 'Reset section',
               icon: RotateCcw,
